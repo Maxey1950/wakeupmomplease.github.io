@@ -1,131 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Face Detection App</title>
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
-    <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-        #video {
-            width: 640px;
-            height: 480px;
-            margin-bottom: 10px;
-            border: 2px solid black;
-        }
-        button {
-            padding: 10px 20px;
-            margin: 10px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button:disabled {
-            background-color: grey;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face Detection Wake-up</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-node"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-react-native"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
 </head>
 <body>
-    <video id="video" autoplay></video>
-    <div>
-        <button id="startBtn">Start Detection</button>
-        <button id="stopBtn" disabled>Stop Detection</button>
-    </div>
 
-    <script>
-        const video = document.getElementById("video");
-        const startBtn = document.getElementById("startBtn");
-        const stopBtn = document.getElementById("stopBtn");
+  <h1>Wake Up Detection</h1>
+  <video id="video" width="640" height="480" autoplay></video>
 
-        let isDetecting = false;
-        let alertSound = new Audio('https://github.com/Maxey1950/wakeupmom/raw/refs/heads/main/alert.mp3');
+  <script>
+    const videoElement = document.getElementById('video');
+    const wakeUpSound = new Audio('https://github.com/Maxey1950/wakeupmom/raw/refs/heads/main/alert.mp3');
 
-        // Initialize the camera
-        navigator.mediaDevices.getUserMedia({ video: {} })
-            .then(stream => {
-                video.srcObject = stream;
-                video.play();
-            }).catch(err => {
-                console.error("Error accessing camera: ", err);
-            });
+    async function setupCamera() {
+      const constraints = {
+        video: {
+          facingMode: 'user',  // Use front camera
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
 
-        // Load face-api.js models
-        Promise.all([
-            faceapi.nets.ssdMobilenetv1.loadFromUri("/models"),
-            faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
-            faceapi.nets.faceRecognitionNet.loadFromUri("/models")
-        ]).then(() => {
-            console.log("Models loaded");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoElement.srcObject = stream;
+      } catch (error) {
+        console.error('Error accessing camera: ', error);
+      }
+    }
 
-            // Start face detection when the "Start Detection" button is clicked
-            startBtn.addEventListener("click", () => {
-                isDetecting = true;
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                detectFace();
-            });
+    async function detectFace() {
+      await tf.ready();  // Make sure TensorFlow.js is ready
 
-            // Stop face detection when the "Stop Detection" button is clicked
-            stopBtn.addEventListener("click", () => {
-                isDetecting = false;
-                startBtn.disabled = false;
-                stopBtn.disabled = true;
-            });
+      const model = await faceLandmarksDetection.load(
+        faceLandmarksDetection.SupportedPackages.mediapipeFacemesh
+      );
 
-            // Function to detect faces and check if the person might be falling asleep
-            async function detectFace() {
-                if (isDetecting) {
-                    const detections = await faceapi.detectAllFaces(video)
-                        .withFaceLandmarks()
-                        .withFaceDescriptors();
-                    
-                    // Check for closed eyes (as a simple indicator of sleepiness)
-                    detections.forEach(detection => {
-                        const landmarks = detection.landmarks;
-                        const leftEye = landmarks.getLeftEye();
-                        const rightEye = landmarks.getRightEye();
-                        
-                        // Check if eyes are closed by measuring the eye distance (simplified approach)
-                        const leftEyeClosed = isEyeClosed(leftEye);
-                        const rightEyeClosed = isEyeClosed(rightEye);
-                        
-                        if (leftEyeClosed && rightEyeClosed) {
-                            console.log("Person is falling asleep");
-                            playWakeUpSound();
-                        }
-
-                    });
-
-                    requestAnimationFrame(detectFace);  // Keep detecting
-                }
-            }
-
-            // Helper function to check if an eye is closed
-            function isEyeClosed(eyeLandmarks) {
-                const eyeWidth = Math.abs(eyeLandmarks[0].x - eyeLandmarks[3].x);
-                const eyeHeight = Math.abs(eyeLandmarks[1].y - eyeLandmarks[5].y);
-                const ratio = eyeHeight / eyeWidth;
-                
-                return ratio > 0.25;  // If the ratio is above a threshold, consider the eye closed
-            }
-
-            // Function to play the wake-up sound
-            function playWakeUpSound() {
-                if (alertSound.paused) {
-                    alertSound.play();
-                }
-            }
-        }).catch(err => {
-            console.error("Error loading models: ", err);
+      const detect = async () => {
+        const predictions = await model.estimateFaces({
+          input: videoElement
         });
-    </script>
+
+        if (predictions.length > 0) {
+          // Simulated logic to detect "falling asleep" (e.g., eyes closed)
+          if (eyesClosed(predictions)) {
+            wakeUpSound.play();
+          }
+        }
+
+        requestAnimationFrame(detect);
+      };
+
+      detect();
+    }
+
+    function eyesClosed(predictions) {
+      // Dummy check to simulate detecting closed eyes (just an example)
+      return predictions.some(prediction => {
+        const leftEye = prediction.annotations.leftEye;
+        const rightEye = prediction.annotations.rightEye;
+
+        // Simple logic to simulate closed eyes (check if eye landmarks are very close)
+        return Math.abs(leftEye[1][1] - rightEye[1][1]) < 5;
+      });
+    }
+
+    setupCamera();
+    detectFace();
+  </script>
+
 </body>
 </html>
