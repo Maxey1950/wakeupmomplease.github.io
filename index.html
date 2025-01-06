@@ -3,39 +3,75 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Face Detection Wake-up</title>
+  <title>Wake Up Detection</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-node"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-react-native"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
 </head>
 <body>
 
   <h1>Wake Up Detection</h1>
+
+  <!-- Buttons to control the camera and detection -->
+  <button id="startButton">Start Camera</button>
+  <button id="stopButton" disabled>Stop Camera</button>
+  <button id="startDetectionButton" disabled>Start Face Detection</button>
+  <button id="stopDetectionButton" disabled>Stop Face Detection</button>
+
   <video id="video" width="640" height="480" autoplay></video>
 
   <script>
     const videoElement = document.getElementById('video');
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+    const startDetectionButton = document.getElementById('startDetectionButton');
+    const stopDetectionButton = document.getElementById('stopDetectionButton');
     const wakeUpSound = new Audio('https://github.com/Maxey1950/wakeupmom/raw/refs/heads/main/alert.mp3');
 
+    let cameraStream = null;
+    let detectionInterval = null;
+
+    // Function to set up the camera for video stream
     async function setupCamera() {
       const constraints = {
         video: {
-          facingMode: 'user',  // Use front camera
+          facingMode: 'user',  // Use front camera (facingMode: 'user' refers to the front camera)
           width: { ideal: 1280 },
           height: { ideal: 720 }
         }
       };
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        videoElement.srcObject = stream;
+        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoElement.srcObject = cameraStream;
+
+        // Auto play the video on iOS
+        videoElement.play().catch((err) => {
+          console.error('Error playing video:', err);
+        });
+
+        startButton.disabled = true;
+        stopButton.disabled = false;
+        startDetectionButton.disabled = false;
       } catch (error) {
         console.error('Error accessing camera: ', error);
       }
     }
 
-    async function detectFace() {
+    // Function to stop the camera
+    function stopCamera() {
+      if (cameraStream) {
+        const tracks = cameraStream.getTracks();
+        tracks.forEach(track => track.stop());
+        videoElement.srcObject = null;
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        startDetectionButton.disabled = true;
+        stopDetectionButton.disabled = true;
+      }
+    }
+
+    // Function to start face detection
+    async function startFaceDetection() {
       await tf.ready();  // Make sure TensorFlow.js is ready
 
       const model = await faceLandmarksDetection.load(
@@ -48,31 +84,60 @@
         });
 
         if (predictions.length > 0) {
-          // Simulated logic to detect "falling asleep" (e.g., eyes closed)
+          // Check for falling asleep by analyzing eye landmarks
           if (eyesClosed(predictions)) {
             wakeUpSound.play();
           }
         }
 
-        requestAnimationFrame(detect);
+        detectionInterval = requestAnimationFrame(detect);  // Keep detecting on the next frame
       };
 
       detect();
+      startDetectionButton.disabled = true;
+      stopDetectionButton.disabled = false;
     }
 
+    // Function to stop face detection
+    function stopFaceDetection() {
+      if (detectionInterval) {
+        cancelAnimationFrame(detectionInterval);
+      }
+      stopDetectionButton.disabled = true;
+      startDetectionButton.disabled = false;
+    }
+
+    // Dummy function to simulate eyes being closed based on landmarks
     function eyesClosed(predictions) {
-      // Dummy check to simulate detecting closed eyes (just an example)
       return predictions.some(prediction => {
         const leftEye = prediction.annotations.leftEye;
         const rightEye = prediction.annotations.rightEye;
 
-        // Simple logic to simulate closed eyes (check if eye landmarks are very close)
+        // Basic logic to check for eyes closed (landmark positions should be close)
         return Math.abs(leftEye[1][1] - rightEye[1][1]) < 5;
       });
     }
 
-    setupCamera();
-    detectFace();
+    // Initialize the camera when the user clicks "Start Camera"
+    startButton.addEventListener('click', () => {
+      startButton.disabled = true;  // Disable the button after clicking
+      setupCamera();
+    });
+
+    // Stop the camera when the user clicks "Stop Camera"
+    stopButton.addEventListener('click', () => {
+      stopCamera();
+    });
+
+    // Start face detection when the user clicks "Start Face Detection"
+    startDetectionButton.addEventListener('click', () => {
+      startFaceDetection();
+    });
+
+    // Stop face detection when the user clicks "Stop Face Detection"
+    stopDetectionButton.addEventListener('click', () => {
+      stopFaceDetection();
+    });
   </script>
 
 </body>
